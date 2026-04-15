@@ -12,7 +12,7 @@ exports.getAll = async (req, res) => {
          WHEN created_at >= NOW() - INTERVAL 7 DAY THEN CONCAT(TIMESTAMPDIFF(DAY, created_at, NOW()), ' hari lalu')
          ELSE DATE_FORMAT(created_at, '%d %M %Y')
        END as tanggal_relative
-       FROM notifikasi WHERE mahasiswa_id = ? ORDER BY created_at DESC`,
+       FROM notifikasi WHERE user_id = ? ORDER BY created_at DESC`,
       [req.user.id]
     );
     return res.json({ success: true, data: rows });
@@ -26,7 +26,7 @@ exports.getAll = async (req, res) => {
 exports.tandaiBaca = async (req, res) => {
   try {
     await db.query(
-      "UPDATE notifikasi SET dibaca = 1 WHERE id = ? AND mahasiswa_id = ?",
+      "UPDATE notifikasi SET dibaca = 1 WHERE id = ? AND user_id = ?",
       [req.params.id, req.user.id]
     );
     return res.json({ success: true, message: "Notifikasi ditandai dibaca" });

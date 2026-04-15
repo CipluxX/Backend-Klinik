@@ -5,10 +5,14 @@ const { v4: uuidv4 } = require("uuid");
 exports.getAll = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT *,
-       DATE_FORMAT(tanggal, '%d %M %Y') as tanggal_format,
-       TIME_FORMAT(jam, '%H:%i') as jam_format
-       FROM reservasi WHERE mahasiswa_id = ? ORDER BY tanggal DESC, jam DESC`,
+      `SELECT r.*,
+              DATE_FORMAT(r.tanggal, '%d %M %Y') as tanggal_format,
+              TIME_FORMAT(r.jam, '%H:%i') as jam_format,
+              d.nama AS dokter
+       FROM reservasi r
+       LEFT JOIN dokter d ON d.id = r.dokter_id
+       WHERE r.user_id = ?
+       ORDER BY r.tanggal DESC, r.jam DESC`,
       [req.user.id]
     );
     return res.json({ success: true, data: rows });
@@ -27,9 +31,8 @@ exports.create = async (req, res) => {
       return res.status(400).json({ success: false, message: "Tanggal dan jam wajib diisi" });
     }
 
-    // Cek tidak ada reservasi aktif di tanggal yang sama
     const [existing] = await db.query(
-      "SELECT id FROM reservasi WHERE mahasiswa_id = ? AND tanggal = ? AND status = 'aktif'",
+      "SELECT id FROM reservasi WHERE user_id = ? AND tanggal = ? AND status = 'aktif'",
       [req.user.id, tanggal]
     );
     if (existing.length > 0) {
@@ -38,14 +41,12 @@ exports.create = async (req, res) => {
 
     const id = uuidv4();
     await db.query(
-      "INSERT INTO reservasi (id, mahasiswa_id, tanggal, jam, keluhan) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO reservasi (id, user_id, tanggal, jam, keluhan) VALUES (?, ?, ?, ?, ?)",
       [id, req.user.id, tanggal, jam, keluhan || null]
     );
 
-    // Buat notifikasi
     await db.query(
-      `INSERT INTO notifikasi (id, mahasiswa_id, judul, pesan, tipe)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO notifikasi (id, user_id, judul, pesan, tipe) VALUES (?, ?, ?, ?, ?)`,
       [
         uuidv4(), req.user.id,
         "Reservasi Berhasil 📅",
@@ -65,7 +66,7 @@ exports.create = async (req, res) => {
 exports.cancel = async (req, res) => {
   try {
     const [rows] = await db.query(
-      "SELECT id FROM reservasi WHERE id = ? AND mahasiswa_id = ? AND status = 'aktif'",
+      "SELECT id FROM reservasi WHERE id = ? AND user_id = ? AND status = 'aktif'",
       [req.params.id, req.user.id]
     );
     if (rows.length === 0) {

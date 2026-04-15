@@ -11,22 +11,23 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-async function testEmail() {
+async function test() {
   try {
     await transporter.verify();
-    console.log('✅ Koneksi email berhasil!');
+    console.log('✅ Koneksi berhasil!');
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"MedChain UNDIP" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER, // kirim ke diri sendiri dulu
-      subject: 'Test Email MedChain',
-      html: '<h2>Test berhasil! 🎉</h2><p>Nodemailer berjalan dengan baik.</p>',
+      to: process.env.EMAIL_USER, // kirim ke email sendiri dulu
+      subject: 'Test OTP MedChain',
+      html: '<h2>Kode OTP: <b>123456</b></h2>',
     });
 
-    console.log('✅ Email test berhasil dikirim!');
+    console.log('✅ Email terkirim!');
+    console.log('Message ID:', info.messageId);
   } catch (err) {
     console.log('❌ Gagal:', err.message);
   }
 }
 
-testEmail();
+test();

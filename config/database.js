@@ -13,7 +13,6 @@ const pool = mysql.createPool({
   timezone: "+07:00",
 });
 
-// Test koneksi
 pool.getConnection()
   .then((conn) => {
     console.log("✅ Database MySQL terhubung");

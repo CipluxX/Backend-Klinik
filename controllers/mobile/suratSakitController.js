@@ -6,13 +6,14 @@ const crypto = require("crypto");
 exports.getAll = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT ss.*, 
-       DATE_FORMAT(ss.tanggal_mulai, '%d %M %Y') as tanggal_mulai_format,
-       DATE_FORMAT(ss.tanggal_selesai, '%d %M %Y') as tanggal_selesai_format,
-       rm.diagnosa
+      `SELECT ss.*,
+              DATE_FORMAT(ss.tanggal_mulai, '%d %M %Y') as tanggal_mulai_format,
+              DATE_FORMAT(ss.tanggal_selesai, '%d %M %Y') as tanggal_selesai_format,
+              rm.diagnosa
        FROM surat_sakit ss
        LEFT JOIN rekam_medis rm ON ss.rekam_medis_id = rm.id
-       WHERE ss.mahasiswa_id = ? ORDER BY ss.created_at DESC`,
+       WHERE ss.user_id = ?
+       ORDER BY ss.created_at DESC`,
       [req.user.id]
     );
     return res.json({ success: true, data: rows });
@@ -27,12 +28,14 @@ exports.getById = async (req, res) => {
   try {
     const [rows] = await db.query(
       `SELECT ss.*,
-       DATE_FORMAT(ss.tanggal_mulai, '%d %M %Y') as tanggal_mulai_format,
-       DATE_FORMAT(ss.tanggal_selesai, '%d %M %Y') as tanggal_selesai_format,
-       rm.diagnosa, rm.dokter, rm.tindakan
+              DATE_FORMAT(ss.tanggal_mulai, '%d %M %Y') as tanggal_mulai_format,
+              DATE_FORMAT(ss.tanggal_selesai, '%d %M %Y') as tanggal_selesai_format,
+              rm.diagnosa, rm.tindakan,
+              d.nama AS dokter, d.spesialis
        FROM surat_sakit ss
        LEFT JOIN rekam_medis rm ON ss.rekam_medis_id = rm.id
-       WHERE ss.id = ? AND ss.mahasiswa_id = ?`,
+       LEFT JOIN dokter d ON d.id = rm.dokter_id
+       WHERE ss.id = ? AND ss.user_id = ?`,
       [req.params.id, req.user.id]
     );
     if (rows.length === 0) {

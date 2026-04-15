@@ -1,13 +1,16 @@
 const db = require("../../config/database");
-const { v4: uuidv4 } = require("uuid");
 
 // GET /rekam-medis
 exports.getAll = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT id, tanggal, diagnosa, keluhan, dokter, catatan,
-       DATE_FORMAT(tanggal, '%d %M %Y') as tanggal_format
-       FROM rekam_medis WHERE mahasiswa_id = ? ORDER BY tanggal DESC`,
+      `SELECT rm.id, rm.tanggal, rm.diagnosa, rm.keluhan, rm.tindakan, rm.catatan,
+              d.nama AS dokter,
+              DATE_FORMAT(rm.tanggal, '%d %M %Y') as tanggal_format
+       FROM rekam_medis rm
+       LEFT JOIN dokter d ON d.id = rm.dokter_id
+       WHERE rm.user_id = ?
+       ORDER BY rm.tanggal DESC`,
       [req.user.id]
     );
     return res.json({ success: true, data: rows });
@@ -21,8 +24,11 @@ exports.getAll = async (req, res) => {
 exports.getById = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT *, DATE_FORMAT(tanggal, '%d %M %Y') as tanggal_format
-       FROM rekam_medis WHERE id = ? AND mahasiswa_id = ?`,
+      `SELECT rm.*, d.nama AS dokter, d.spesialis,
+              DATE_FORMAT(rm.tanggal, '%d %M %Y') as tanggal_format
+       FROM rekam_medis rm
+       LEFT JOIN dokter d ON d.id = rm.dokter_id
+       WHERE rm.id = ? AND rm.user_id = ?`,
       [req.params.id, req.user.id]
     );
     if (rows.length === 0) {

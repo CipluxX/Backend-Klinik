@@ -2,54 +2,62 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
-const db = require("../../config/database");
+const db = require('../../config/database');
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
+  host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  pool: true,
+  maxConnections: 5,
+  maxMessages: 100,
 });
 
 // POST /auth/login
 exports.login = async (req, res) => {
   try {
     const { nim, password } = req.body;
-
     if (!nim || !password) {
       return res.status(400).json({ success: false, message: "NIM dan password wajib diisi" });
     }
 
-    const [rows] = await db.query("SELECT * FROM mahasiswa WHERE nim = ?", [nim]);
+    // JOIN users + mahasiswa_profiles
+    const [rows] = await db.query(
+      `SELECT u.*, u.name AS nama, mp.nim, mp.fakultas, mp.jurusan, mp.angkatan, mp.semester
+      FROM users u
+      JOIN mahasiswa_profiles mp ON mp.user_id = u.id
+      WHERE mp.nim = ? AND u.role = 'mahasiswa'`,
+      [nim]
+    );
     if (rows.length === 0) {
       return res.status(401).json({ success: false, message: "NIM tidak ditemukan" });
     }
 
-    const mahasiswa = rows[0];
+    const user = rows[0];
 
-    // Cek verifikasi email
-    if (!mahasiswa.is_verified) {
+    if (!user.is_verified) {
       return res.status(401).json({
         success: false,
         message: "Email belum diverifikasi. Cek inbox email Anda."
       });
     }
 
-    const valid = await bcrypt.compare(password, mahasiswa.password);
+    const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ success: false, message: "Password salah" });
     }
 
     const token = jwt.sign(
-      { id: mahasiswa.id, nim: mahasiswa.nim, nama: mahasiswa.nama },
+      { id: user.id, nim: user.nim, name: user.name, role: user.role },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
     );
 
-    const { password: _, ...data } = mahasiswa;
+    const { password: _, ...data } = user;
     return res.json({ success: true, message: "Login berhasil", data: { token, mahasiswa: data } });
   } catch (err) {
     console.error(err);
@@ -70,26 +78,37 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, message: "Password minimal 8 karakter" });
     }
 
-    const [existing] = await db.query(
-      "SELECT id FROM mahasiswa WHERE nim = ? OR email = ?", [nim, email]
+    // Cek duplikat di users (email) dan mahasiswa_profiles (nim)
+    const [existingEmail] = await db.query(
+      "SELECT id FROM users WHERE email = ?", [email]
     );
-    if (existing.length > 0) {
+    const [existingNim] = await db.query(
+      "SELECT id FROM mahasiswa_profiles WHERE nim = ?", [nim]
+    );
+    if (existingEmail.length > 0 || existingNim.length > 0) {
       return res.status(409).json({ success: false, message: "NIM atau email sudah terdaftar" });
     }
 
     const hashed = await bcrypt.hash(password, 10);
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
-    await db.query(
-      `INSERT INTO mahasiswa (nama, nim, email, telepon, fakultas, jurusan, angkatan, password, is_verified, verification_token)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-      [nama, nim, email, telepon, fakultas, jurusan, angkatan || null, hashed, verificationToken]
+    // Insert ke users dulu
+    const [result] = await db.query(
+      `INSERT INTO users (name, email, phone, password, role, is_verified, verification_token)
+       VALUES (?, ?, ?, ?, 'mahasiswa', 0, ?)`,
+      [nama, email, telepon, hashed, verificationToken]
     );
 
-    // URL verifikasi — pakai IP laptop agar bisa dibuka dari HP
+    // Insert ke mahasiswa_profiles
+    await db.query(
+      `INSERT INTO mahasiswa_profiles (user_id, nim, fakultas, jurusan, angkatan)
+       VALUES (?, ?, ?, ?, ?)`,
+      [result.insertId, nim, fakultas, jurusan, angkatan || null]
+    );
+
     const verifyUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}/api/auth/verify-email?token=${verificationToken}`;
 
-    await transporter.sendMail({
+    transporter.sendMail({
       from: `"MedChain UNDIP" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verifikasi Email - MedChain UNDIP",
@@ -99,8 +118,7 @@ exports.register = async (req, res) => {
           <p>Halo <b>${nama}</b>,</p>
           <p>Terima kasih sudah mendaftar! Klik tombol di bawah untuk verifikasi email Anda:</p>
           <div style="text-align: center; margin: 24px 0;">
-            <a href="${verifyUrl}"
-              style="background: #1565C0; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
+            <a href="${verifyUrl}" style="background: #1565C0; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Verifikasi Email
             </a>
           </div>
@@ -109,6 +127,10 @@ exports.register = async (req, res) => {
           <p style="color: #999; font-size: 12px;">Jika Anda tidak mendaftar, abaikan email ini.</p>
         </div>
       `,
+    }).then(() => {
+      console.log("✅ Email verifikasi terkirim ke:", email);
+    }).catch(err => {
+      console.error("❌ Gagal kirim verifikasi:", err.message);
     });
 
     return res.status(201).json({
@@ -134,7 +156,7 @@ exports.verifyEmail = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      "SELECT id FROM mahasiswa WHERE verification_token = ? AND is_verified = 0",
+      "SELECT id FROM users WHERE verification_token = ? AND is_verified = 0",
       [token]
     );
 
@@ -147,7 +169,7 @@ exports.verifyEmail = async (req, res) => {
     }
 
     await db.query(
-      "UPDATE mahasiswa SET is_verified = 1, verification_token = NULL WHERE id = ?",
+      "UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?",
       [rows[0].id]
     );
 
@@ -179,7 +201,8 @@ exports.resendVerification = async (req, res) => {
     }
 
     const [rows] = await db.query(
-      "SELECT id, nama, is_verified FROM mahasiswa WHERE email = ?", [email]
+      "SELECT id, name, is_verified FROM users WHERE email = ? AND role = 'mahasiswa'",
+      [email]
     );
 
     if (rows.length === 0) {
@@ -192,43 +215,46 @@ exports.resendVerification = async (req, res) => {
 
     const newToken = crypto.randomBytes(32).toString("hex");
     await db.query(
-      "UPDATE mahasiswa SET verification_token = ? WHERE id = ?",
+      "UPDATE users SET verification_token = ? WHERE id = ?",
       [newToken, rows[0].id]
     );
 
     const verifyUrl = `http://${process.env.SERVER_IP || 'localhost'}:${process.env.PORT || 3000}/api/auth/verify-email?token=${newToken}`;
 
-    await transporter.sendMail({
+    transporter.sendMail({
       from: `"MedChain UNDIP" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verifikasi Email - MedChain UNDIP",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; padding: 24px; border: 1px solid #E0E0E0; border-radius: 12px;">
           <h2 style="color: #1565C0; text-align: center;">MedChain UNDIP</h2>
-          <p>Halo <b>${rows[0].nama}</b>,</p>
+          <p>Halo <b>${rows[0].name}</b>,</p>
           <p>Klik tombol di bawah untuk verifikasi email Anda:</p>
           <div style="text-align: center; margin: 24px 0;">
-            <a href="${verifyUrl}"
-              style="background: #1565C0; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
+            <a href="${verifyUrl}" style="background: #1565C0; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">
               Verifikasi Email
             </a>
           </div>
           <p style="color: #999; font-size: 12px;">Link berlaku selama 24 jam.</p>
         </div>
       `,
+    }).then(() => {
+      console.log("✅ Email verifikasi ulang terkirim ke:", email);
+    }).catch(err => {
+      console.error("❌ Gagal kirim verifikasi ulang:", err.message);
     });
 
     return res.json({ success: true, message: "Email verifikasi telah dikirim ulang" });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, message: "Gagal kirim email: " + err.message });
+    return res.status(500).json({ success: false, message: "Gagal: " + err.message });
   }
 };
 
 // POST /auth/logout
 exports.logout = async (req, res) => {
   try {
-    await db.query("UPDATE mahasiswa SET push_token = NULL WHERE id = ?", [req.user.id]);
+    await db.query("UPDATE users SET push_token = NULL WHERE id = ?", [req.user.id]);
     return res.json({ success: true, message: "Logout berhasil" });
   } catch (err) {
     console.error(err);
