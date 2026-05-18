@@ -1,4 +1,3 @@
-// controllers/website/mahasiswaController.js
 const db = require('../../config/database');
 
 const getAllMahasiswa = async (req, res) => {
@@ -26,7 +25,6 @@ const getAllMahasiswa = async (req, res) => {
       WHERE u.role = 'mahasiswa'
       ORDER BY u.created_at DESC
     `);
-
     res.json({ success: true, data: rows });
   } catch (error) {
     console.error('getAllMahasiswa error:', error);

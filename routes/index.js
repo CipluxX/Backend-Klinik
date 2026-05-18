@@ -22,7 +22,25 @@ const webUserController             = require("../controllers/website/userContro
 const webMahasiswaController        = require("../controllers/website/mahasiswaController");
 const webRekamMedisController       = require("../controllers/website/rekamMedisController");
 const webSuratSakitController       = require("../controllers/website/suratSakitController");
-const webSuratSakitUmumController   = require("../controllers/website/suratSakitUmumController"); // ← BARU
+const webSuratSakitUmumController   = require("../controllers/website/suratSakitUmumController");
+
+// ═══════════════════════════════════════════════════════════════
+// HELPER: emit Socket.IO event ke semua client
+// ═══════════════════════════════════════════════════════════════
+function emitUpdate(req, event, payload = {}) {
+  const io = req.app.get("io");
+
+  console.log("[socket emit request]", event, payload);
+
+  if (!io) {
+    console.log("[socket emit failed] io tidak ditemukan");
+    return;
+  }
+
+  io.emit(event, payload);
+
+  console.log("[socket emit success]", event);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // MOBILE ROUTES
@@ -72,49 +90,182 @@ router.get("/web/mahasiswa",          auth, webMahasiswaController.getAllMahasis
 // ─── Data Pasien Mahasiswa Website ───────────────────────────
 router.get   ("/web/pasien",          auth, webPasienController.getAllPasien);
 router.get   ("/web/pasien/:id",      auth, webPasienController.getPasienById);
-router.post  ("/web/pasien",          auth, webPasienController.createPasien);
-router.delete("/web/pasien/:id",      auth, webPasienController.deletePasien);
+router.post  ("/web/pasien",          auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "pasien:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webPasienController.createPasien(req, res, next);
+});
+router.delete("/web/pasien/:id",      auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "pasien:hapus", { id: req.params.id, timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webPasienController.deletePasien(req, res, next);
+});
 
 // ─── Data Non Mahasiswa (Pasien Umum) Website ─────────────────
 router.get   ("/web/pasien-umum",          auth, webPasienUmumController.getAllPasienUmum);
 router.get   ("/web/pasien-umum/:id",      auth, webPasienUmumController.getPasienUmumById);
-router.post  ("/web/pasien-umum",          auth, webPasienUmumController.createPasienUmum);
-router.delete("/web/pasien-umum/:id",      auth, webPasienUmumController.deletePasienUmum);
+router.post  ("/web/pasien-umum",          auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "pasien_umum:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webPasienUmumController.createPasienUmum(req, res, next);
+});
+router.delete("/web/pasien-umum/:id",      auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "pasien_umum:hapus", { id: req.params.id, timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webPasienUmumController.deletePasienUmum(req, res, next);
+});
 
 // ─── Rekam Medis Mahasiswa Website ───────────────────────────
 router.get ("/web/rekam-medis",       auth, webRekamMedisController.getAllRekamMedis);
-router.post("/web/rekam-medis",       auth, webRekamMedisController.createRekamMedis);
+
+// ─── WRAP createRekamMedis agar emit socket setelah berhasil ──
+router.post("/web/rekam-medis",       auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "rekam_medis:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webRekamMedisController.createRekamMedis(req, res, next);
+});
+
 router.get ("/web/dokter-list",       auth, webRekamMedisController.getDokterList);
 
 // ─── Rekam Medis Non Mahasiswa Website ───────────────────────
 router.get ("/web/rekam-medis-umum",  auth, webRekamMedisController.getAllRekamMedisUmum);
-router.post("/web/rekam-medis-umum",  auth, webRekamMedisController.createRekamMedisUmum);
+
+router.post("/web/rekam-medis-umum",  auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "rekam_medis:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webRekamMedisController.createRekamMedisUmum(req, res, next);
+});
 
 // ─── Surat Sakit Mahasiswa Website ───────────────────────────
 router.get   ("/web/surat-sakit",                  auth, webSuratSakitController.getAllSuratSakit);
 router.get   ("/web/surat-sakit/:id",              auth, webSuratSakitController.getSuratSakitById);
-router.post  ("/web/surat-sakit",                  auth, webSuratSakitController.createSuratSakit);
-router.patch ("/web/surat-sakit/:id/verifikasi",   auth, webSuratSakitController.verifikasiSuratSakit);
 router.delete("/web/surat-sakit/:id",              auth, webSuratSakitController.deleteSuratSakit);
+
+router.post  ("/web/surat-sakit",                  auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "surat_sakit:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webSuratSakitController.createSuratSakit(req, res, next);
+});
+
+router.patch ("/web/surat-sakit/:id/verifikasi",   auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "surat_sakit:update", { id: req.params.id, timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webSuratSakitController.verifikasiSuratSakit(req, res, next);
+});
 
 // ─── Surat Sakit Non Mahasiswa (Umum) Website ────────────────
 router.get   ("/web/surat-sakit-umum",                  auth, webSuratSakitUmumController.getAllSuratSakitUmum);
 router.get   ("/web/surat-sakit-umum/:id",              auth, webSuratSakitUmumController.getSuratSakitUmumById);
-router.post  ("/web/surat-sakit-umum",                  auth, webSuratSakitUmumController.createSuratSakitUmum);
-router.patch ("/web/surat-sakit-umum/:id/verifikasi",   auth, webSuratSakitUmumController.verifikasiSuratSakitUmum);
 router.delete("/web/surat-sakit-umum/:id",              auth, webSuratSakitUmumController.deleteSuratSakitUmum);
+
+router.post  ("/web/surat-sakit-umum",                  auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "surat_sakit:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webSuratSakitUmumController.createSuratSakitUmum(req, res, next);
+});
+
+router.patch ("/web/surat-sakit-umum/:id/verifikasi",   auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "surat_sakit:update", { id: req.params.id, timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webSuratSakitUmumController.verifikasiSuratSakitUmum(req, res, next);
+});
 
 // ─── Reservasi Website ───────────────────────────────────────
 router.get   ("/web/reservasi",            auth, webReservasiController.getAllReservasi);
-router.post  ("/web/reservasi",                  webReservasiController.createReservasi);
-router.patch ("/web/reservasi/:id/status", auth, webReservasiController.updateStatusReservasi);
-router.delete("/web/reservasi/:id",        auth, webReservasiController.deleteReservasi);
+router.delete("/web/reservasi/:id",        auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "reservasi:update", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webReservasiController.deleteReservasi(req, res, next);
+});
+
+// createReservasi — tanpa auth (publik), emit setelah berhasil
+router.post  ("/web/reservasi",            async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "reservasi:baru", { timestamp: Date.now() });
+    }
+    return originalJson(body);
+  };
+  return webReservasiController.createReservasi(req, res, next);
+});
+
+// updateStatusReservasi — emit setelah status berubah
+router.patch ("/web/reservasi/:id/status", auth, async (req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode < 400) {
+      emitUpdate(req, "reservasi:update", {
+        id: req.params.id,
+        status: req.body.status,
+        timestamp: Date.now(),
+      });
+    }
+    return originalJson(body);
+  };
+  return webReservasiController.updateStatusReservasi(req, res, next);
+});
 
 // ─── User Website ────────────────────────────────────────────
 router.get   ("/web/user/profile",         auth, webUserController.getProfile);
 router.put   ("/web/user/profile",         auth, webUserController.updateProfile);
 router.put   ("/web/user/password",        auth, webUserController.updatePassword);
-router.post  ("/web/user/photo",           auth, upload.single('photo'), webUserController.uploadPhoto);
+router.post  ("/web/user/photo",           auth, upload.single("photo"), webUserController.uploadPhoto);
 router.delete("/web/user/photo",           auth, webUserController.deletePhoto);
 
 module.exports = router;
