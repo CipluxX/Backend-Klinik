@@ -1,6 +1,7 @@
 // controllers/website/rekamMedisController.js
 const db = require("../../config/database");
 const { v4: uuidv4 } = require("uuid");
+const xss = require("xss");
 
 // ── GET semua rekam medis mahasiswa ───────────────────────────────────────────
 const getAllRekamMedis = async (req, res) => {
@@ -86,6 +87,14 @@ const createRekamMedis = async (req, res) => {
 
     const id = uuidv4();
 
+    // Input Sanitization untuk mencegah Stored XSS
+    const sanitizedTanggal = xss(tanggal);
+    const sanitizedKeluhan = xss(keluhan || "");
+    const sanitizedDiagnosa = xss(diagnosa);
+    const sanitizedTindakan = xss(tindakan || "");
+    const sanitizedCatatan = xss(catatan || "");
+
+    // Parameterized Query untuk mencegah SQL Injection
     await db.query(
       `INSERT INTO rekam_medis
         (id, user_id, dokter_id, tanggal, diagnosa, keluhan, tindakan, catatan)
@@ -94,11 +103,11 @@ const createRekamMedis = async (req, res) => {
         id,
         Number(user_id),
         dokter_id ? Number(dokter_id) : null,
-        tanggal,
-        diagnosa,
-        keluhan || "",
-        tindakan || "",
-        catatan || "",
+        sanitizedTanggal, // PERBAIKAN: Menggunakan tanggal yang sudah aman
+        sanitizedDiagnosa,
+        sanitizedKeluhan,
+        sanitizedTindakan,
+        sanitizedCatatan,
       ]
     );
 
@@ -109,11 +118,11 @@ const createRekamMedis = async (req, res) => {
         id,
         user_id,
         dokter_id,
-        tanggal,
-        diagnosa,
-        keluhan,
-        tindakan,
-        catatan,
+        tanggal: sanitizedTanggal, // PERBAIKAN: Respons mengembalikan tanggal aman
+        diagnosa: sanitizedDiagnosa,
+        keluhan: sanitizedKeluhan,
+        tindakan: sanitizedTindakan,
+        catatan: sanitizedCatatan,
       },
     });
   } catch (error) {
@@ -191,6 +200,14 @@ const createRekamMedisUmum = async (req, res) => {
 
     const id = uuidv4();
 
+    // Input Sanitization untuk mencegah Stored XSS
+    const sanitizedTanggal = xss(tanggal);
+    const sanitizedKeluhan = xss(keluhan || "");
+    const sanitizedDiagnosa = xss(diagnosa);
+    const sanitizedTindakan = xss(tindakan || "");
+    const sanitizedCatatan = xss(catatan || "");
+
+    // Parameterized Query untuk mencegah SQL Injection
     await db.query(
       `INSERT INTO rekam_medis_umum
         (id, pasien_umum_id, dokter_id, tanggal, diagnosa, keluhan, tindakan, catatan)
@@ -199,11 +216,11 @@ const createRekamMedisUmum = async (req, res) => {
         id,
         Number(pasien_umum_id),
         dokter_id ? Number(dokter_id) : null,
-        tanggal,
-        diagnosa,
-        keluhan || "",
-        tindakan || "",
-        catatan || "",
+        sanitizedTanggal,
+        sanitizedDiagnosa,
+        sanitizedKeluhan,
+        sanitizedTindakan,
+        sanitizedCatatan,
       ]
     );
 
@@ -214,11 +231,11 @@ const createRekamMedisUmum = async (req, res) => {
         id,
         pasien_umum_id,
         dokter_id,
-        tanggal,
-        diagnosa,
-        keluhan,
-        tindakan,
-        catatan,
+        tanggal: sanitizedTanggal, // PERBAIKAN: Respons mengembalikan tanggal aman
+        diagnosa: sanitizedDiagnosa,
+        keluhan: sanitizedKeluhan,
+        tindakan: sanitizedTindakan,
+        catatan: sanitizedCatatan,
       },
     });
   } catch (error) {
